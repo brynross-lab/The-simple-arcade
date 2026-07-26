@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Catch It!</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: linear-gradient(180deg, #ffe8b8 0%, #ffd27a 40%, #ffb84d 100%);
+    font-family: 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', sans-serif;
+    touch-action: none;
+  }
+  #game {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+  #hud {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    z-index: 50;
+    pointer-events: none;
+  }
+  #score {
+    font-size: 28px;
+    font-weight: bold;
+    color: #7a3b00;
+    text-shadow: 2px 2px 0 #fff, -1px -1px 0 #fff;
+  }
+  #lives {
+    font-size: 26px;
+  }
+  .falling-item {
+    position: absolute;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    filter: drop-shadow(2px 3px 2px rgba(0,0,0,0.25));
+  }
+  .stem {
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    width: 6px;
+    height: 12px;
+    background: #6b4423;
+    border-radius: 2px;
+    transform: translateX(-50%) rotate(-10deg);
+  }
+  .leaf {
+    position: absolute;
+    top: -10px;
+    left: 58%;
+    width: 14px;
+    height: 8px;
+    background: #4caf50;
+    border-radius: 60% 10% 60% 10%;
+    transform: rotate(20deg);
+  }
+
+  /* Blackout overlay - a solid black layer with a radial-gradient "hole" that
+     tracks the finger. Because the hole is a transparent gradient rather than
+     an opaque circle drawn on top, fruit/worms underneath stay visible right
+     where the flashlight shines. */
+  #blackout {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 100;
+    display: none;
+    pointer-events: auto;
+    background: rgba(0,0,0,0.97);
+  }
+  #blackout.lit {
+    background: radial-gradient(circle at var(--fx, 50%) var(--fy, 50%),
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 90px,
+      rgba(0,0,0,0.55) 150px,
+      rgba(0,0,0,0.97) 220px);
+  }
+  #blackout-msg {
+    position: absolute;
+    top: 20%;
+    width: 100%;
+    text-align: center;
+    color: #fff;
+    font-size: 22px;
+    font-weight: bold;
+    pointer-events: none;
+    opacity: 0.9;
+    text-shadow: 0 0 8px #000;
+  }
+
+  #startScreen, #gameOverScreen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, #ffe8b8 0%, #ffb84d 100%);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+  }
+  #startScreen h1, #gameOverScreen h1 {
+    font-size: 42px;
+    color: #d9480f;
+    text-shadow: 3px 3px 0 #fff;
+    margin-bottom: 10px;
+  }
+  #startScreen p, #gameOverScreen p {
+    font-size: 18px;
+    color: #7a3b00;
+    max-width: 320px;
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+  .bigBtn {
+    margin-top: 24px;
+    padding: 18px 40px;
+    font-size: 26px;
+    font-weight: bold;
+    color: #fff;
+    background: #ff9800;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 0 6px 0 #c66900;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .bigBtn:active {
+    box-shadow: 0 2px 0 #c66900;
+    transform: translateY(4px);
+  }
+  .legend {
+    display: flex;
+    gap: 16px;
+    margin-top: 18px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .legend-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-size: 12px;
+    color: #7a3b00;
+  }
+  .legend-icon {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #wormBoundary {
+    position: absolute;
+    left: 0; right: 0;
+    height: 0;
+    border-top: 3px dashed rgba(122, 59, 0, 0.35);
+    z-index: 40;
+    pointer-events: none;
+  }
+  #gameOverScreen { display: none; }
+  #finalScore {
+    font-size: 30px;
+    color: #d9480f;
+    font-weight: bold;
+    margin: 10px 0;
+  }
+</style>
+</head>
+<body>
+<div id="game">
+
+  <div id="wormBoundary"></div>
+
+  <div id="hud">
+    <div id="score">0</div>
+    <div id="lives">❤️❤️❤️</div>
+  </div>
+
+  <div id="startScreen">
+    <h1>Catch It!</h1>
+    <p>Tap the apples 🍎 and oranges 🍊 before the gummy worms down below eat them out of the air!</p>
+    <p>Watch out for sneaky eyeballs 👀 — tapping one turns out the lights! Tap a worm to shoo it away.</p>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-icon" id="li-apple"></div>Apple</div>
+      <div class="legend-item"><div class="legend-icon" id="li-orange"></div>Orange</div>
+      <div class="legend-item"><div class="legend-icon" id="li-eye"></div>Fake!</div>
+      <div class="legend-item"><div class="legend-icon" id="li-worm"></div>Worm</div>
+    </div>
+    <button class="bigBtn" id="startBtn">PLAY</button>
+  </div>
+
+  <div id="gameOverScreen">
+    <h1>Game Over!</h1>
+    <div id="finalScore">Score: 0</div>
+    <p id="gameOverMsg"></p>
+    <button class="bigBtn" id="restartBtn">PLAY AGAIN</button>
+  </div>
+
+  <div id="blackout">
+    <div id="blackout-msg">🔦 Hold your finger down to shine the flashlight!</div>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  const game = document.getElementById('game');
+  const scoreEl = document.getElementById('score');
+  const livesEl = document.getElementById('lives');
+  const startScreen = document.getElementById('startScreen');
+  const gameOverScreen = document.getElementById('gameOverScreen');
+  const finalScoreEl = document.getElementById('finalScore');
+  const gameOverMsg = document.getElementById('gameOverMsg');
+  const blackout = document.getElementById('blackout');
+  const wormBoundary = document.getElementById('wormBoundary');
+
+  let score = 0;
+  let lives = 3;
+  let running = false;
+  let spawnTimer = null;
+  let speedLevel = 1;
+  let items = [];
+  let itemIdCounter = 0;
+  let blackoutActive = false;
+  let blackoutTimeout = null;
+
+  const W = () => window.innerWidth;
+  const H = () => window.innerHeight;
+
+  // ---- SVG builders for each item type (matching her drawing: round apples/oranges w/ stem+leaf, oval worms, round eyeballs) ----
+
+  function makeSVG(type) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", "100%");
+    svg.setAttribute("viewBox", "0 0 60 60");
+
+    function circle(cx, cy, r, fill, stroke) {
+      const c = document.createElementNS(ns, "circle");
+      c.setAttribute("cx", cx); c.setAttribute("cy", cy); c.setAttribute("r", r);
+      c.setAttribute("fill", fill);
+      if (stroke) { c.setAttribute("stroke", stroke); c.setAttribute("stroke-width", "1.5"); }
+      return c;
+    }
+    function ellipse(cx, cy, rx, ry, fill, rot) {
+      const e = document.createElementNS(ns, "ellipse");
+      e.setAttribute("cx", cx); e.setAttribute("cy", cy);
+      e.setAttribute("rx", rx); e.setAttribute("ry", ry);
+      e.setAttribute("fill", fill);
+      if (rot) e.setAttribute("transform", `rotate(${rot} ${cx} ${cy})`);
+      return e;
+    }
+    function line(x1,y1,x2,y2,stroke,w) {
+      const l = document.createElementNS(ns, "line");
+      l.setAttribute("x1",x1); l.setAttribute("y1",y1); l.setAttribute("x2",x2); l.setAttribute("y2",y2);
+      l.setAttribute("stroke", stroke); l.setAttribute("stroke-width", w||2); l.setAttribute("stroke-linecap","round");
+      return l;
+    }
+
+    if (type === 'apple') {
+      svg.appendChild(circle(30, 34, 20, '#e8412c', '#a8281a'));
+      svg.appendChild(line(30, 14, 32, 5, '#6b4423', 3));
+      svg.appendChild(ellipse(38, 8, 7, 4, '#4caf50', -20));
+    } else if (type === 'orange') {
+      svg.appendChild(circle(30, 34, 20, '#ff9a1f', '#d97a00'));
+      svg.appendChild(line(30, 14, 27, 6, '#6b4423', 3));
+      svg.appendChild(ellipse(22, 7, 7, 4, '#4caf50', 20));
+    } else if (type === 'eye') {
+      // Bigger than before, and rounder/plumper so it still reads as a
+      // fruit-like shape from a distance, but the eyeball fills much more
+      // of it up close so kids can catch the trick if they look.
+      svg.setAttribute("viewBox", "0 0 70 70");
+      svg.appendChild(circle(35, 37, 26, '#d4e657', '#a8b32a'));
+      svg.appendChild(circle(35, 37, 16, '#fff', '#ddd'));
+      svg.appendChild(circle(35, 37, 8.5, '#3a3a3a'));
+      svg.appendChild(circle(38, 33, 3, '#fff'));
+    }
+    return svg;
+  }
+
+  // Gummy worm: a wiggly, segmented body (like real gummy worm candy) built
+  // from a smooth SVG path with alternating color bands, plus a friendly face.
+  function makeWormSVG(phase) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", "100%");
+    svg.setAttribute("viewBox", "0 0 90 40");
+
+    // Wiggle path - an S-curve body; phase shifts the curve for animation
+    const wob = Math.sin(phase) * 6;
+    const d = `M 5 20 
+      C 15 ${10 - wob}, 25 ${30 + wob}, 35 20
+      C 45 ${10 - wob}, 55 ${30 + wob}, 65 20
+      C 72 ${14 - wob}, 78 20, 83 20`;
+
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("stroke", "#c6e62e");
+    path.setAttribute("stroke-width", "16");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("fill", "none");
+    svg.appendChild(path);
+
+    // banding stripes for a candy look
+    const path2 = document.createElementNS(ns, "path");
+    path2.setAttribute("d", d);
+    path2.setAttribute("stroke", "#e8f77a");
+    path2.setAttribute("stroke-width", "6");
+    path2.setAttribute("stroke-linecap", "round");
+    path2.setAttribute("stroke-dasharray", "3,9");
+    path2.setAttribute("fill", "none");
+    svg.appendChild(path2);
+
+    // face on the leading end
+    const eye1 = document.createElementNS(ns, "circle");
+    eye1.setAttribute("cx", 82); eye1.setAttribute("cy", 16); eye1.setAttribute("r", 2.2);
+    eye1.setAttribute("fill", "#333");
+    svg.appendChild(eye1);
+    const eye2 = document.createElementNS(ns, "circle");
+    eye2.setAttribute("cx", 82); eye2.setAttribute("cy", 24); eye2.setAttribute("r", 2.2);
+    eye2.setAttribute("fill", "#333");
+    svg.appendChild(eye2);
+
+    return svg;
+  }
+
+  // Build legend icons once
+  ['apple','orange','eye'].forEach(t => {
+    const el = document.getElementById('li-' + t);
+    if (el) el.appendChild(makeSVG(t));
+  });
+  const wormLegend = document.getElementById('li-worm');
+  if (wormLegend) wormLegend.appendChild(makeWormSVG(0));
+
+  function updateHUD() {
+    scoreEl.textContent = score;
+    livesEl.textContent = '❤️'.repeat(Math.max(lives,0)) + '🖤'.repeat(Math.max(3-lives,0));
+  }
+
+  let worms = [];
+  let wormIdCounter = 0;
+
+  function spawnItem() {
+    if (!running || blackoutActive) return;
+    const roll = Math.random();
+    let type;
+    if (roll < 0.45) type = 'apple';
+    else if (roll < 0.80) type = 'orange';
+    else type = 'eye';
+
+    const el = document.createElement('div');
+    el.className = 'falling-item';
+    const size = type === 'eye' ? 78 + Math.random() * 16 : 60 + Math.random() * 20;
+    el.style.width = size + 'px';
+    el.style.height = size + 'px';
+    const startX = 20 + Math.random() * (W() - size - 40);
+    el.style.left = startX + 'px';
+    el.style.top = '-90px';
+    el.appendChild(makeSVG(type));
+    game.appendChild(el);
+
+    const duration = (2600 + Math.random() * 1400) / speedLevel;
+    const id = itemIdCounter++;
+    const itemData = { id, el, type, caught: false, size, x: startX, y: -90, landed: false };
+    items.push(itemData);
+
+    const anim = el.animate(
+      [{ transform: 'translateY(0px)' }, { transform: `translateY(${H() + 100}px)` }],
+      { duration: duration, easing: 'linear', fill: 'forwards' }
+    );
+
+    const removeTimer = setTimeout(() => {
+      if (!itemData.caught) {
+        if (type === 'apple' || type === 'orange') loseLife();
+        removeItem(itemData);
+      }
+    }, duration);
+    itemData.removeTimer = removeTimer;
+    itemData.anim = anim;
+
+    el.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      handleTap(itemData);
+    });
+  }
+
+  function spawnWorm() {
+    if (!running) return;
+    const size = 70 + Math.random() * 30;
+    const el = document.createElement('div');
+    el.className = 'falling-item';
+    el.style.width = size + 'px';
+    el.style.height = (size * 0.44) + 'px';
+    const x = Math.random() * (W() - size);
+    const y = H() / 3 + Math.random() * (H() * 2 / 3 - size * 0.44 - 20);
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    game.appendChild(el);
+
+    const angle = Math.random() * Math.PI * 2;
+    const wormData = {
+      id: wormIdCounter++,
+      el, x, y, size,
+      vx: Math.cos(angle) * (0.7 + Math.random() * 0.5),
+      vy: Math.sin(angle) * (0.7 + Math.random() * 0.5),
+      phase: Math.random() * 10,
+      caught: false,
+      targetItem: null
+    };
+    worms.push(wormData);
+
+    el.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      handleWormTap(wormData);
+    });
+  }
+
+  function removeItem(itemData) {
+    if (itemData.el && itemData.el.parentNode) itemData.el.parentNode.removeChild(itemData.el);
+    items = items.filter(i => i.id !== itemData.id);
+    worms.forEach(w => { if (w.targetItem === itemData) w.targetItem = null; });
+  }
+
+  function removeWorm(wormData) {
+    if (wormData.el && wormData.el.parentNode) wormData.el.parentNode.removeChild(wormData.el);
+    worms = worms.filter(w => w.id !== wormData.id);
+  }
+
+  function handleTap(itemData) {
+    if (itemData.caught || !running) return;
+    itemData.caught = true;
+    clearTimeout(itemData.removeTimer);
+
+    if (itemData.type === 'apple' || itemData.type === 'orange') {
+      score += 10;
+      updateHUD();
+      popEffect(itemData.el, '+10', '#2e7d32');
+      removeItem(itemData);
+      if (score > 0 && score % 100 === 0) speedLevel += 0.15;
+    } else if (itemData.type === 'eye') {
+      popEffect(itemData.el, '👀!', '#333');
+      removeItem(itemData);
+      triggerBlackout();
+    }
+  }
+
+  function handleWormTap(wormData) {
+    if (wormData.caught || !running) return;
+    // Shooing a worm away doesn't score, but saves whatever it's chasing
+    wormData.caught = true;
+    popEffect(wormData.el, 'shoo!', '#8d6e00');
+    removeWorm(wormData);
+  }
+
+  // Worms now roam the ENTIRE page in 2D (not just a ground strip), and will
+  // beeline toward and "eat" any apple/orange while it's still falling, not
+  // just after it lands.
+  function wormAI() {
+    if (!running) return;
+
+    worms.forEach(w => {
+      if (w.caught) return;
+
+      // find nearest uncaught fruit that's still within the worm's roaming
+      // zone (top third of screen) if we don't have a target
+      if (!w.targetItem || w.targetItem.caught) {
+        let nearest = null, nearestDist = Infinity;
+        items.forEach(it => {
+          if (it.caught || (it.type !== 'apple' && it.type !== 'orange')) return;
+          if (it.y < H() / 3) return;
+          const dx = it.x - w.x, dy = it.y - w.y;
+          const d = dx * dx + dy * dy;
+          if (d < nearestDist) { nearest = it; nearestDist = d; }
+        });
+        w.targetItem = nearest;
+      }
+
+      if (w.targetItem && w.targetItem.y < H() / 3) {
+        w.targetItem = null;
+      }
+
+      if (w.targetItem) {
+        const dx = w.targetItem.x - w.x;
+        const dy = w.targetItem.y - w.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const speed = 1.8 + Math.random() * 0.4;
+        w.vx = (dx / dist) * speed;
+        w.vy = (dy / dist) * speed;
+        if (dist < 32) {
+          // caught the fruit!
+          const fruit = w.targetItem;
+          if (!fruit.caught) {
+            fruit.caught = true;
+            clearTimeout(fruit.removeTimer);
+            if (fruit.anim) fruit.anim.cancel();
+            popEffect(fruit.el, 'eaten!', '#c0392b');
+            removeItem(fruit);
+          }
+          w.targetItem = null;
+        }
+      } else {
+        // idle wander - change direction fairly often so worms don't settle
+        if (Math.random() < 0.04 || (Math.abs(w.vx) < 0.05 && Math.abs(w.vy) < 0.05)) {
+          const a = Math.random() * Math.PI * 2;
+          w.vx = Math.cos(a) * 1.1;
+          w.vy = Math.sin(a) * 1.1;
+        }
+      }
+
+      // Separation: gently push worms apart from each other so they spread
+      // across their zone instead of clumping in one spot. Distance is
+      // scaled to the zone size so it doesn't overwhelm a narrow band.
+      let sepX = 0, sepY = 0;
+      const minDist = 110;
+      worms.forEach(other => {
+        if (other === w || other.caught) return;
+        const dx = w.x - other.x, dy = w.y - other.y;
+        const d = Math.sqrt(dx * dx + dy * dy) || 1;
+        if (d < minDist) {
+          const push = (minDist - d) / minDist;
+          sepX += (dx / d) * push;
+          sepY += (dy / d) * push;
+        }
+      });
+      w.vx += sepX * 1.4;
+      w.vy += sepY * 1.4;
+
+      // cap overall speed so separation force doesn't make worms jitter
+      const spd = Math.sqrt(w.vx * w.vx + w.vy * w.vy);
+      const maxSpd = 2.6;
+      if (spd > maxSpd) {
+        w.vx = (w.vx / spd) * maxSpd;
+        w.vy = (w.vy / spd) * maxSpd;
+      }
+
+      w.x += w.vx;
+      w.y += w.vy;
+
+      // bounce off edges - worms are NOT allowed in the top third of the
+      // screen (kept clear for easier catching); they roam everywhere below it
+      if (w.x < 0) { w.x = 0; w.vx = Math.abs(w.vx); }
+      if (w.x > W() - w.size) { w.x = W() - w.size; w.vx = -Math.abs(w.vx); }
+      const wormH = w.size * 0.44;
+      const topLimit = H() / 3;
+      const bottomLimit = H() - wormH - 10;
+      if (w.y < topLimit) { w.y = topLimit; w.vy = Math.abs(w.vy); }
+      if (w.y > bottomLimit) { w.y = bottomLimit; w.vy = -Math.abs(w.vy); }
+
+      w.phase += 0.15;
+
+      w.el.style.left = w.x + 'px';
+      w.el.style.top = w.y + 'px';
+      w.el.style.transform = w.vx < 0 ? 'scaleX(-1)' : 'scaleX(1)';
+      // redraw with new wiggle phase
+      w.el.innerHTML = '';
+      w.el.appendChild(makeWormSVG(w.phase));
+    });
+
+    requestAnimationFrame(wormAI);
+  }
+
+  // Track live x/y for falling items so worms can target them mid-fall
+  function trackItems() {
+    if (!running) { requestAnimationFrame(trackItems); return; }
+    items.forEach(it => {
+      if (it.caught) return;
+      const rect = it.el.getBoundingClientRect();
+      it.x = rect.left;
+      it.y = rect.top;
+    });
+    requestAnimationFrame(trackItems);
+  }
+
+  function popEffect(el, text, color) {
+    const rect = el.getBoundingClientRect();
+    const label = document.createElement('div');
+    label.textContent = text;
+    label.style.position = 'absolute';
+    label.style.left = rect.left + 'px';
+    label.style.top = rect.top + 'px';
+    label.style.color = color;
+    label.style.fontWeight = 'bold';
+    label.style.fontSize = '22px';
+    label.style.zIndex = 60;
+    label.style.pointerEvents = 'none';
+    label.style.textShadow = '1px 1px 0 #fff';
+    game.appendChild(label);
+    label.animate(
+      [{ transform: 'translateY(0px)', opacity: 1 }, { transform: 'translateY(-40px)', opacity: 0 }],
+      { duration: 700, easing: 'ease-out' }
+    );
+    setTimeout(() => label.remove(), 700);
+  }
+
+  function loseLife() {
+    lives -= 1;
+    updateHUD();
+    if (lives <= 0) {
+      endGame('The apples and oranges got away!');
+    }
+  }
+
+  // ---- Blackout / flashlight mechanic ----
+  // Longer blackout duration per request, and the "hole" is a transparent
+  // radial-gradient region tracking the finger, so the fruit/worms below
+  // remain visible inside the lit circle instead of being hidden by an
+  // opaque overlay.
+  const BLACKOUT_DURATION = 6000;
+
+  function triggerBlackout() {
+    if (blackoutActive) return;
+    blackoutActive = true;
+    blackout.style.display = 'block';
+    blackout.classList.remove('lit');
+    blackout.style.setProperty('--fx', '50%');
+    blackout.style.setProperty('--fy', '50%');
+
+    blackoutTimeout = setTimeout(() => {
+      endBlackout();
+    }, BLACKOUT_DURATION);
+  }
+
+  function endBlackout() {
+    blackoutActive = false;
+    blackout.style.display = 'none';
+    blackout.classList.remove('lit');
+    clearTimeout(blackoutTimeout);
+  }
+
+  blackout.addEventListener('pointerdown', (e) => {
+    blackout.classList.add('lit');
+    moveFlashlight(e);
+  });
+  blackout.addEventListener('pointermove', (e) => {
+    if (blackout.classList.contains('lit')) moveFlashlight(e);
+  });
+  blackout.addEventListener('pointerup', () => {
+    blackout.classList.remove('lit');
+  });
+  blackout.addEventListener('pointercancel', () => {
+    blackout.classList.remove('lit');
+  });
+  function moveFlashlight(e) {
+    blackout.style.setProperty('--fx', e.clientX + 'px');
+    blackout.style.setProperty('--fy', e.clientY + 'px');
+  }
+
+  // ---- Game loop control ----
+  let wormSpawnTimer = null;
+  let aiStarted = false;
+
+  function updateBoundaryLine() {
+    wormBoundary.style.top = (H() / 3) + 'px';
+  }
+  window.addEventListener('resize', updateBoundaryLine);
+
+  function startGame() {
+    score = 0; lives = 3; speedLevel = 1;
+    items.forEach(i => removeItem(i));
+    worms.forEach(w => removeWorm(w));
+    items = [];
+    worms = [];
+    updateHUD();
+    updateBoundaryLine();
+    startScreen.style.display = 'none';
+    gameOverScreen.style.display = 'none';
+    endBlackout();
+    running = true;
+    scheduleSpawn();
+    scheduleWormSpawn();
+    if (!aiStarted) {
+      aiStarted = true;
+      requestAnimationFrame(wormAI);
+      requestAnimationFrame(trackItems);
+    }
+  }
+
+  function scheduleSpawn() {
+    if (!running) return;
+    spawnItem();
+    const delay = Math.max(500, 1100 / speedLevel);
+    spawnTimer = setTimeout(scheduleSpawn, delay);
+  }
+
+  function scheduleWormSpawn() {
+    if (!running) return;
+    if (worms.length < 4) spawnWorm();
+    const delay = 3500 + Math.random() * 2500;
+    wormSpawnTimer = setTimeout(scheduleWormSpawn, delay);
+  }
+
+  function endGame(msg) {
+    running = false;
+    clearTimeout(spawnTimer);
+    clearTimeout(wormSpawnTimer);
+    endBlackout();
+    items.forEach(i => removeItem(i));
+    worms.forEach(w => removeWorm(w));
+    finalScoreEl.textContent = 'Score: ' + score;
+    gameOverMsg.textContent = msg || '';
+    gameOverScreen.style.display = 'flex';
+
+    // Report score to the parent arcade page (if embedded), so it can be
+    // saved to the player's account. Safe to call even outside the arcade -
+    // postMessage to a non-listening parent is a no-op.
+    try {
+      window.parent.postMessage({ type: 'GAME_OVER', score: score }, '*');
+    } catch (e) {
+      // ignore - not embedded, or cross-origin restriction
+    }
+  }
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('restartBtn').addEventListener('click', startGame);
+
+})();
+</script>
+</body>
+</html>

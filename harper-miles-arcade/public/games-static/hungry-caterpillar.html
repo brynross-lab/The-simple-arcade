@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Hungry Caterpillar!</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: linear-gradient(180deg, #cdeccb 0%, #a8dba0 55%, #8ac97f 100%);
+    font-family: 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', sans-serif;
+    touch-action: none;
+  }
+  #game {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #hud {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    z-index: 50;
+    pointer-events: none;
+  }
+  #score {
+    font-size: 28px;
+    font-weight: bold;
+    color: #234a12;
+    text-shadow: 2px 2px 0 #fff, -1px -1px 0 #fff;
+  }
+  #lengthLabel {
+    font-size: 18px;
+    font-weight: bold;
+    color: #234a12;
+    text-shadow: 1px 1px 0 #fff;
+    background: rgba(255,255,255,0.5);
+    padding: 4px 14px;
+    border-radius: 16px;
+  }
+
+  .food {
+    position: absolute;
+    pointer-events: none;
+    z-index: 15;
+    filter: drop-shadow(1px 2px 2px rgba(0,0,0,0.25));
+  }
+
+  .segment {
+    position: absolute;
+    border-radius: 50%;
+    z-index: 20;
+    pointer-events: none;
+  }
+
+  #startScreen, #resultScreen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, #cdeccb 0%, #8ac97f 100%);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+  }
+  #startScreen h1, #resultScreen h1 {
+    font-size: 36px;
+    color: #234a12;
+    text-shadow: 3px 3px 0 #fff;
+    margin-bottom: 10px;
+  }
+  #startScreen p, #resultScreen p {
+    font-size: 17px;
+    color: #234a12;
+    max-width: 320px;
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+  .bigBtn {
+    margin-top: 22px;
+    padding: 16px 38px;
+    font-size: 24px;
+    font-weight: bold;
+    color: #fff;
+    background: #4caf50;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 0 6px 0 #2e7d32;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .bigBtn:active {
+    box-shadow: 0 2px 0 #2e7d32;
+    transform: translateY(4px);
+  }
+  #resultScreen { display: none; }
+  #resultScore {
+    font-size: 32px;
+    color: #234a12;
+    font-weight: bold;
+    margin: 10px 0;
+  }
+
+  #dragHint {
+    position: absolute;
+    bottom: 26px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #234a12;
+    font-weight: bold;
+    font-size: 14px;
+    text-shadow: 1px 1px 0 rgba(255,255,255,0.6);
+    z-index: 40;
+    text-align: center;
+    pointer-events: none;
+    background: rgba(255,255,255,0.6);
+    padding: 6px 14px;
+    border-radius: 14px;
+    max-width: 85%;
+  }
+</style>
+</head>
+<body>
+<div id="game">
+
+  <div id="hud">
+    <div id="score">0</div>
+    <div id="lengthLabel">Length: 4</div>
+  </div>
+
+  <div id="dragHint">Drag the caterpillar's head to eat fruit and treats — don't run into yourself!</div>
+
+  <div id="startScreen">
+    <h1>Hungry Caterpillar!</h1>
+    <p>Drag his head around the screen to gobble up fruit and treats. He grows longer with every bite — but watch out, running into your own body ends the game!</p>
+    <button class="bigBtn" id="startBtn">PLAY</button>
+  </div>
+
+  <div id="resultScreen">
+    <h1>Oops!</h1>
+    <div id="resultScore">Score: 0</div>
+    <p id="resultMsg"></p>
+    <button class="bigBtn" id="restartBtn">PLAY AGAIN</button>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  const game = document.getElementById('game');
+  const scoreEl = document.getElementById('score');
+  const lengthLabel = document.getElementById('lengthLabel');
+  const dragHint = document.getElementById('dragHint');
+  const startScreen = document.getElementById('startScreen');
+  const resultScreen = document.getElementById('resultScreen');
+  const resultScore = document.getElementById('resultScore');
+  const resultMsg = document.getElementById('resultMsg');
+
+  const SEGMENT_SIZE = 30;
+  const SEGMENT_SPACING = 22; // distance along the path between segment centers
+  const HEAD_EASE = 0.25; // how quickly the head catches up to the finger (0-1, higher = snappier)
+  const START_LENGTH = 4;
+  const SELF_COLLISION_RADIUS = 16; // how close head must get to a body segment to "run into" it
+  const SELF_COLLISION_SKIP = 5; // ignore the first N segments nearest the head (they're always close by)
+
+  let running = false;
+  let score = 0;
+  let pointerActive = false;
+  let pointerX = 0, pointerY = 0;
+  let headX = 0, headY = 0;
+  let pathHistory = []; // recent head positions, used to place trailing segments
+  let segments = []; // {x, y, el, colorIndex}
+  let foods = [];
+  let foodIdCounter = 0;
+  let growthPending = 0; // how many new segments still need to be added
+  let spawnTimer = null;
+
+  const W = () => window.innerWidth;
+  const H = () => window.innerHeight;
+
+  const bodyColors = ['#8bc34a', '#7cb342', '#9ccc65'];
+
+  function makeSegmentEl(isHead) {
+    const el = document.createElement('div');
+    el.className = 'segment';
+    el.style.width = SEGMENT_SIZE + 'px';
+    el.style.height = SEGMENT_SIZE + 'px';
+    if (isHead) {
+      el.style.background = 'radial-gradient(circle at 35% 30%, #9ccc65, #689f38)';
+      el.style.boxShadow = 'inset 0 -4px 6px rgba(0,0,0,0.15)';
+    } else {
+      el.style.background = 'radial-gradient(circle at 35% 30%, #a5d66a, #7cb342)';
+      el.style.boxShadow = 'inset 0 -3px 5px rgba(0,0,0,0.12)';
+    }
+    game.appendChild(el);
+    return el;
+  }
+
+  function buildHeadFace(el) {
+    el.innerHTML = `
+      <svg viewBox="0 0 30 30" width="100%" height="100%" style="position:absolute; top:0; left:0;">
+        <circle cx="11" cy="12" r="3" fill="#2b2b2b"/>
+        <circle cx="19" cy="12" r="3" fill="#2b2b2b"/>
+        <circle cx="12" cy="11" r="1" fill="#fff"/>
+        <circle cx="20" cy="11" r="1" fill="#fff"/>
+        <path d="M 6 6 Q 4 -2 2 4" stroke="#689f38" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <path d="M 24 6 Q 26 -2 28 4" stroke="#689f38" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <path d="M 10 20 Q 15 24 20 20" stroke="#2b2b2b" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.6"/>
+      </svg>
+    `;
+  }
+
+  function resetCaterpillar() {
+    segments.forEach(s => { if (s.el.parentNode) s.el.parentNode.removeChild(s.el); });
+    segments = [];
+    pathHistory = [];
+
+    headX = W() / 2;
+    headY = H() / 2;
+
+    for (let i = 0; i < START_LENGTH; i++) {
+      const isHead = i === 0;
+      const el = makeSegmentEl(isHead);
+      if (isHead) buildHeadFace(el);
+      const x = headX - i * SEGMENT_SPACING;
+      const y = headY;
+      segments.push({ x, y, el });
+      pathHistory.push({ x, y });
+    }
+    renderSegments();
+    lengthLabel.textContent = 'Length: ' + segments.length;
+  }
+
+  function renderSegments() {
+    segments.forEach(s => {
+      s.el.style.left = (s.x - SEGMENT_SIZE / 2) + 'px';
+      s.el.style.top = (s.y - SEGMENT_SIZE / 2) + 'px';
+    });
+  }
+
+  // ---- Food ----
+  function makeFruitSVG(kind) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", "100%");
+    svg.setAttribute("viewBox", "0 0 40 40");
+
+    if (kind === 'apple') {
+      const body = document.createElementNS(ns, "circle");
+      body.setAttribute("cx", 20); body.setAttribute("cy", 22); body.setAttribute("r", 14);
+      body.setAttribute("fill", "#e8412c");
+      body.setAttribute("stroke", "#a8281a");
+      body.setAttribute("stroke-width", "1.5");
+      svg.appendChild(body);
+      const stem = document.createElementNS(ns, "line");
+      stem.setAttribute("x1", 20); stem.setAttribute("y1", 9);
+      stem.setAttribute("x2", 22); stem.setAttribute("y2", 3);
+      stem.setAttribute("stroke", "#6b4423"); stem.setAttribute("stroke-width", "2");
+      svg.appendChild(stem);
+    } else if (kind === 'grape') {
+      [[14,16],[24,16],[19,22],[14,28],[24,28]].forEach(([cx,cy]) => {
+        const g = document.createElementNS(ns, "circle");
+        g.setAttribute("cx", cx); g.setAttribute("cy", cy); g.setAttribute("r", 6);
+        g.setAttribute("fill", "#8e44ad");
+        g.setAttribute("stroke", "#6c3483");
+        g.setAttribute("stroke-width", "1");
+        svg.appendChild(g);
+      });
+    } else if (kind === 'donut') {
+      const outer = document.createElementNS(ns, "circle");
+      outer.setAttribute("cx", 20); outer.setAttribute("cy", 20); outer.setAttribute("r", 16);
+      outer.setAttribute("fill", "#d4894a");
+      svg.appendChild(outer);
+      const icing = document.createElementNS(ns, "path");
+      icing.setAttribute("d", "M 6 18 Q 20 4 34 18 Q 30 10 20 8 Q 10 10 6 18 Z");
+      icing.setAttribute("fill", "#f48fb1");
+      svg.appendChild(icing);
+      const hole = document.createElementNS(ns, "circle");
+      hole.setAttribute("cx", 20); hole.setAttribute("cy", 20); hole.setAttribute("r", 5);
+      hole.setAttribute("fill", "#cdeccb");
+      svg.appendChild(hole);
+      [[13,14],[27,15],[20,10]].forEach(([x,y]) => {
+        const sprinkle = document.createElementNS(ns, "rect");
+        sprinkle.setAttribute("x", x); sprinkle.setAttribute("y", y);
+        sprinkle.setAttribute("width", 3); sprinkle.setAttribute("height", 1.5);
+        sprinkle.setAttribute("fill", "#5c4a99");
+        sprinkle.setAttribute("transform", `rotate(${Math.random()*360} ${x} ${y})`);
+        svg.appendChild(sprinkle);
+      });
+    } else if (kind === 'cupcake') {
+      const wrapper = document.createElementNS(ns, "path");
+      wrapper.setAttribute("d", "M 10 34 L 14 22 L 26 22 L 30 34 Z");
+      wrapper.setAttribute("fill", "#f4a3c0");
+      svg.appendChild(wrapper);
+      const frosting = document.createElementNS(ns, "path");
+      frosting.setAttribute("d", "M 10 22 Q 12 8 20 10 Q 28 8 30 22 Q 20 16 10 22 Z");
+      frosting.setAttribute("fill", "#fff5e6");
+      svg.appendChild(frosting);
+      const cherry = document.createElementNS(ns, "circle");
+      cherry.setAttribute("cx", 20); cherry.setAttribute("cy", 9); cherry.setAttribute("r", 3);
+      cherry.setAttribute("fill", "#c0392b");
+      svg.appendChild(cherry);
+    }
+    return svg;
+  }
+
+  // fruit = small growth/points, treats = bigger growth/points
+  const FOOD_TYPES = [
+    { kind: 'apple', category: 'fruit', points: 10, growth: 1 },
+    { kind: 'grape', category: 'fruit', points: 10, growth: 1 },
+    { kind: 'donut', category: 'treat', points: 25, growth: 3 },
+    { kind: 'cupcake', category: 'treat', points: 25, growth: 3 },
+  ];
+
+  function spawnFood() {
+    if (!running) return;
+    if (foods.length >= 4) return;
+
+    const def = FOOD_TYPES[Math.floor(Math.random() * FOOD_TYPES.length)];
+    const size = 40;
+    const margin = size + 30;
+    const x = margin + Math.random() * (W() - margin * 2);
+    const y = 90 + Math.random() * (H() - 160);
+
+    const el = document.createElement('div');
+    el.className = 'food';
+    el.style.width = size + 'px';
+    el.style.height = size + 'px';
+    el.style.left = (x - size / 2) + 'px';
+    el.style.top = (y - size / 2) + 'px';
+    el.appendChild(makeFruitSVG(def.kind));
+    game.appendChild(el);
+
+    const id = foodIdCounter++;
+    foods.push({ id, el, x, y, size, def });
+  }
+
+  function removeFood(foodData) {
+    if (foodData.el && foodData.el.parentNode) foodData.el.parentNode.removeChild(foodData.el);
+    foods = foods.filter(f => f.id !== foodData.id);
+  }
+
+  function checkFoodCollisions() {
+    foods.forEach(f => {
+      const dx = f.x - headX;
+      const dy = f.y - headY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < (SEGMENT_SIZE / 2 + f.size / 2) * 0.75) {
+        eatFood(f);
+      }
+    });
+  }
+
+  function eatFood(foodData) {
+    score += foodData.def.points;
+    scoreEl.textContent = score;
+    growthPending += foodData.def.growth;
+
+    popEffect(foodData.x, foodData.y, '+' + foodData.def.points);
+    removeFood(foodData);
+  }
+
+  function popEffect(x, y, text) {
+    const label = document.createElement('div');
+    label.textContent = text;
+    label.style.position = 'absolute';
+    label.style.left = x + 'px';
+    label.style.top = (y - 20) + 'px';
+    label.style.color = '#234a12';
+    label.style.fontWeight = 'bold';
+    label.style.fontSize = '20px';
+    label.style.zIndex = 60;
+    label.style.pointerEvents = 'none';
+    label.style.textShadow = '1px 1px 0 #fff';
+    game.appendChild(label);
+    label.animate(
+      [{ transform: 'translateY(0px)', opacity: 1 }, { transform: 'translateY(-36px)', opacity: 0 }],
+      { duration: 550, easing: 'ease-out' }
+    );
+    setTimeout(() => label.remove(), 550);
+  }
+
+  // ---- Dragging control ----
+  game.addEventListener('pointerdown', (e) => {
+    if (!running) return;
+    pointerActive = true;
+    pointerX = e.clientX;
+    pointerY = e.clientY;
+  });
+  game.addEventListener('pointermove', (e) => {
+    if (!running || !pointerActive) return;
+    pointerX = e.clientX;
+    pointerY = e.clientY;
+  });
+  game.addEventListener('pointerup', () => { pointerActive = false; });
+  game.addEventListener('pointercancel', () => { pointerActive = false; });
+
+  // ---- Main loop: head eases toward finger, body follows path history ----
+  function gameLoop() {
+    if (!running) { requestAnimationFrame(gameLoop); return; }
+
+    if (pointerActive) {
+      headX += (pointerX - headX) * HEAD_EASE;
+      headY += (pointerY - headY) * HEAD_EASE;
+    }
+
+    // clamp head within screen bounds
+    const half = SEGMENT_SIZE / 2;
+    headX = Math.max(half, Math.min(W() - half, headX));
+    headY = Math.max(half, Math.min(H() - half, headY));
+
+    // record path history (only push if moved enough, keeps spacing even)
+    const last = pathHistory[0];
+    const dx = headX - last.x, dy = headY - last.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 2) {
+      pathHistory.unshift({ x: headX, y: headY });
+    }
+    // trim history to something reasonable relative to body length
+    const maxHistory = segments.length * Math.ceil(SEGMENT_SPACING / 2) + 20;
+    if (pathHistory.length > maxHistory) pathHistory.length = maxHistory;
+
+    // place each segment along the path history at increasing spacing from the head
+    segments[0].x = headX;
+    segments[0].y = headY;
+    for (let i = 1; i < segments.length; i++) {
+      const targetDist = i * SEGMENT_SPACING;
+      const point = pointAtDistance(targetDist);
+      segments[i].x = point.x;
+      segments[i].y = point.y;
+    }
+    renderSegments();
+
+    // handle pending growth - add new segments at the tail's current position
+    if (growthPending > 0) {
+      const tail = segments[segments.length - 1];
+      const el = makeSegmentEl(false);
+      segments.push({ x: tail.x, y: tail.y, el });
+      growthPending--;
+      lengthLabel.textContent = 'Length: ' + segments.length;
+    }
+
+    checkFoodCollisions();
+    checkSelfCollision();
+
+    requestAnimationFrame(gameLoop);
+  }
+
+  // Walk along pathHistory to find the point at a given distance from the head
+  function pointAtDistance(targetDist) {
+    let accumulated = 0;
+    for (let i = 1; i < pathHistory.length; i++) {
+      const a = pathHistory[i - 1];
+      const b = pathHistory[i];
+      const segLen = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+      if (accumulated + segLen >= targetDist) {
+        const remaining = targetDist - accumulated;
+        const t = segLen > 0 ? remaining / segLen : 0;
+        return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      }
+      accumulated += segLen;
+    }
+    // ran out of history (shouldn't normally happen) - fall back to oldest point
+    const last = pathHistory[pathHistory.length - 1];
+    return { x: last.x, y: last.y };
+  }
+
+  function checkSelfCollision() {
+    if (segments.length <= SELF_COLLISION_SKIP + 1) return;
+    for (let i = SELF_COLLISION_SKIP; i < segments.length; i++) {
+      const dx = segments[i].x - headX;
+      const dy = segments[i].y - headY;
+      if (Math.sqrt(dx * dx + dy * dy) < SELF_COLLISION_RADIUS) {
+        endGame();
+        return;
+      }
+    }
+  }
+
+  function startGame() {
+    score = 0;
+    scoreEl.textContent = '0';
+    growthPending = 0;
+    foods.forEach(f => removeFood(f));
+    foods = [];
+    dragHint.style.display = 'block';
+    startScreen.style.display = 'none';
+    resultScreen.style.display = 'none';
+    resetCaterpillar();
+    running = true;
+
+    scheduleSpawn();
+    requestAnimationFrame(gameLoop);
+  }
+
+  function scheduleSpawn() {
+    if (!running) return;
+    spawnFood();
+    spawnTimer = setTimeout(scheduleSpawn, 1400 + Math.random() * 900);
+  }
+
+  function endGame() {
+    if (!running) return;
+    running = false;
+    clearTimeout(spawnTimer);
+    dragHint.style.display = 'none';
+
+    resultScore.textContent = 'Score: ' + score;
+    resultMsg.textContent = 'He grew to ' + segments.length + ' segments long!';
+    resultScreen.style.display = 'flex';
+
+    try {
+      window.parent.postMessage({ type: 'GAME_OVER', score: score }, '*');
+    } catch (e) {}
+  }
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('restartBtn').addEventListener('click', startGame);
+
+  requestAnimationFrame(gameLoop);
+})();
+</script>
+</body>
+</html>

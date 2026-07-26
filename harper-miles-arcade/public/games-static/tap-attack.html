@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Tap Attack!</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: linear-gradient(180deg, #ffe066 0%, #ffb703 55%, #fb8500 100%);
+    font-family: 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', sans-serif;
+    touch-action: none;
+  }
+  #game {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  #hud {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    z-index: 50;
+  }
+  #count {
+    font-size: 34px;
+    font-weight: bold;
+    color: #6b3a00;
+    text-shadow: 2px 2px 0 #fff, -1px -1px 0 #fff;
+  }
+  #timer {
+    font-size: 26px;
+    font-weight: bold;
+    color: #6b3a00;
+    text-shadow: 2px 2px 0 #fff, -1px -1px 0 #fff;
+    background: rgba(255,255,255,0.5);
+    padding: 4px 18px;
+    border-radius: 20px;
+  }
+  #timer.urgent {
+    color: #c0392b;
+    animation: timerPulse 0.4s ease-in-out infinite;
+  }
+  @keyframes timerPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.14); }
+  }
+
+  #cpsLabel {
+    position: absolute;
+    top: 74px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 15px;
+    font-weight: bold;
+    color: #6b3a00;
+    background: rgba(255,255,255,0.5);
+    padding: 4px 14px;
+    border-radius: 14px;
+    z-index: 50;
+  }
+
+  #buttonWrap {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #tapBtn {
+    width: min(70vw, 60vh, 320px);
+    height: min(70vw, 60vh, 320px);
+    border-radius: 50%;
+    border: none;
+    background: radial-gradient(circle at 35% 30%, #ff9f43, #ee5a24 70%, #c0392b 100%);
+    box-shadow:
+      0 14px 0 #a52d1e,
+      0 18px 30px rgba(0,0,0,0.3),
+      inset 0 -8px 20px rgba(0,0,0,0.2),
+      inset 0 8px 16px rgba(255,255,255,0.25);
+    font-size: 42px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 2px 2px 0 rgba(0,0,0,0.25);
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.04s ease-out, box-shadow 0.04s ease-out;
+    touch-action: none;
+  }
+  #tapBtn.pressed {
+    transform: translateY(10px) scale(0.96);
+    box-shadow:
+      0 4px 0 #a52d1e,
+      0 6px 12px rgba(0,0,0,0.25),
+      inset 0 -4px 10px rgba(0,0,0,0.25),
+      inset 0 4px 10px rgba(255,255,255,0.15);
+  }
+
+  .tapRipple {
+    position: absolute;
+    border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.7);
+    pointer-events: none;
+    z-index: 40;
+  }
+
+  .plusOne {
+    position: absolute;
+    font-weight: bold;
+    font-size: 20px;
+    color: #fff;
+    text-shadow: 1px 1px 0 rgba(0,0,0,0.3);
+    pointer-events: none;
+    z-index: 45;
+  }
+
+  #startScreen, #resultScreen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, #ffe066 0%, #fb8500 100%);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+  }
+  #startScreen h1, #resultScreen h1 {
+    font-size: 40px;
+    color: #6b3a00;
+    text-shadow: 3px 3px 0 #fff;
+    margin-bottom: 10px;
+  }
+  #startScreen p, #resultScreen p {
+    font-size: 17px;
+    color: #6b3a00;
+    max-width: 320px;
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+  .bigBtn {
+    margin-top: 22px;
+    padding: 16px 38px;
+    font-size: 24px;
+    font-weight: bold;
+    color: #fff;
+    background: #ee5a24;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 0 6px 0 #a52d1e;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .bigBtn:active {
+    box-shadow: 0 2px 0 #a52d1e;
+    transform: translateY(4px);
+  }
+  #resultScreen { display: none; }
+  #resultScore {
+    font-size: 34px;
+    color: #6b3a00;
+    font-weight: bold;
+    margin: 10px 0;
+  }
+  #resultCps {
+    font-size: 18px;
+    color: #6b3a00;
+  }
+</style>
+</head>
+<body>
+<div id="game">
+
+  <div id="hud">
+    <div id="count">0</div>
+    <div id="timer">0:30</div>
+  </div>
+
+  <div id="cpsLabel" style="display:none;">0.0 taps/sec</div>
+
+  <div id="buttonWrap">
+    <button id="tapBtn">TAP!</button>
+  </div>
+
+  <div id="startScreen">
+    <h1>Tap Attack!</h1>
+    <p>Tap the button as many times as you can in 30 seconds. Ready... go!</p>
+    <button class="bigBtn" id="startBtn">PLAY</button>
+  </div>
+
+  <div id="resultScreen">
+    <h1>Time's Up!</h1>
+    <div id="resultScore">0 taps</div>
+    <div id="resultCps"></div>
+    <button class="bigBtn" id="restartBtn">PLAY AGAIN</button>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  const game = document.getElementById('game');
+  const countEl = document.getElementById('count');
+  const timerEl = document.getElementById('timer');
+  const cpsLabel = document.getElementById('cpsLabel');
+  const tapBtn = document.getElementById('tapBtn');
+  const startScreen = document.getElementById('startScreen');
+  const resultScreen = document.getElementById('resultScreen');
+  const resultScore = document.getElementById('resultScore');
+  const resultCps = document.getElementById('resultCps');
+
+  const ROUND_SECONDS = 30;
+
+  let count = 0;
+  let running = false;
+  let timeLeft = ROUND_SECONDS;
+  let timerInterval = null;
+  let startTime = 0;
+
+  function formatTime(s) {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  function startGame() {
+    count = 0;
+    timeLeft = ROUND_SECONDS;
+    countEl.textContent = '0';
+    timerEl.textContent = formatTime(timeLeft);
+    timerEl.classList.remove('urgent');
+    cpsLabel.style.display = 'block';
+    cpsLabel.textContent = '0.0 taps/sec';
+    startScreen.style.display = 'none';
+    resultScreen.style.display = 'none';
+    running = true;
+    startTime = performance.now();
+
+    timerInterval = setInterval(tickTimer, 1000);
+  }
+
+  function tickTimer() {
+    timeLeft--;
+    timerEl.textContent = formatTime(Math.max(0, timeLeft));
+    if (timeLeft <= 5) timerEl.classList.add('urgent');
+    if (timeLeft <= 0) endGame();
+  }
+
+  function registerTap(clientX, clientY) {
+    if (!running) return;
+    count++;
+    countEl.textContent = count;
+
+    const elapsed = (performance.now() - startTime) / 1000;
+    if (elapsed > 0) {
+      cpsLabel.textContent = (count / elapsed).toFixed(1) + ' taps/sec';
+    }
+
+    // quick visual feedback: button press-down effect
+    tapBtn.classList.add('pressed');
+    setTimeout(() => tapBtn.classList.remove('pressed'), 60);
+
+    spawnRipple(clientX, clientY);
+    spawnPlusOne(clientX, clientY);
+  }
+
+  function spawnRipple(x, y) {
+    const ripple = document.createElement('div');
+    ripple.className = 'tapRipple';
+    const size = 20;
+    ripple.style.width = size + 'px';
+    ripple.style.height = size + 'px';
+    ripple.style.left = (x - size / 2) + 'px';
+    ripple.style.top = (y - size / 2) + 'px';
+    game.appendChild(ripple);
+    ripple.animate(
+      [
+        { transform: 'scale(1)', opacity: 0.9 },
+        { transform: 'scale(3.2)', opacity: 0 }
+      ],
+      { duration: 380, easing: 'ease-out' }
+    );
+    setTimeout(() => ripple.remove(), 380);
+  }
+
+  function spawnPlusOne(x, y) {
+    const label = document.createElement('div');
+    label.className = 'plusOne';
+    label.textContent = '+1';
+    label.style.left = (x - 10 + (Math.random() * 30 - 15)) + 'px';
+    label.style.top = (y - 10) + 'px';
+    game.appendChild(label);
+    label.animate(
+      [
+        { transform: 'translateY(0px)', opacity: 1 },
+        { transform: 'translateY(-50px)', opacity: 0 }
+      ],
+      { duration: 500, easing: 'ease-out' }
+    );
+    setTimeout(() => label.remove(), 500);
+  }
+
+  // Use pointerdown (not click) for lowest-latency, most responsive tapping,
+  // and support multiple rapid taps without needing pointerup in between.
+  tapBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    registerTap(e.clientX, e.clientY);
+  });
+
+  function endGame() {
+    running = false;
+    clearInterval(timerInterval);
+
+    const elapsed = (performance.now() - startTime) / 1000;
+    const cps = elapsed > 0 ? (count / elapsed) : 0;
+
+    resultScore.textContent = count + (count === 1 ? ' tap' : ' taps');
+    resultCps.textContent = 'That\'s ' + cps.toFixed(1) + ' taps per second on average!';
+    resultScreen.style.display = 'flex';
+
+    try {
+      window.parent.postMessage({ type: 'GAME_OVER', score: count }, '*');
+    } catch (e) {}
+  }
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('restartBtn').addEventListener('click', startGame);
+})();
+</script>
+</body>
+</html>

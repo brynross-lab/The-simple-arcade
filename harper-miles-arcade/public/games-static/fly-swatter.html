@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Fly Swatter!</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: linear-gradient(180deg, #e8dcc0 0%, #d9c9a3 50%, #c7b587 100%);
+    font-family: 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', sans-serif;
+    touch-action: none;
+  }
+  #game {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #hud {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    z-index: 50;
+    pointer-events: none;
+  }
+  #score {
+    font-size: 28px;
+    font-weight: bold;
+    color: #3a2e1a;
+    text-shadow: 2px 2px 0 #fff, -1px -1px 0 #fff;
+  }
+  #timer {
+    font-size: 24px;
+    font-weight: bold;
+    color: #3a2e1a;
+    text-shadow: 2px 2px 0 #fff, -1px -1px 0 #fff;
+    background: rgba(255,255,255,0.5);
+    padding: 4px 16px;
+    border-radius: 20px;
+  }
+  #timer.urgent {
+    color: #c0392b;
+    animation: timerPulse 0.5s ease-in-out infinite;
+  }
+  @keyframes timerPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+  }
+
+  .fly {
+    position: absolute;
+    cursor: pointer;
+    z-index: 20;
+    filter: drop-shadow(1px 2px 2px rgba(0,0,0,0.3));
+  }
+
+  .splat {
+    position: absolute;
+    pointer-events: none;
+    z-index: 15;
+  }
+
+  #startScreen, #resultScreen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, #e8dcc0 0%, #c7b587 100%);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+  }
+  #startScreen h1, #resultScreen h1 {
+    font-size: 38px;
+    color: #3a2e1a;
+    text-shadow: 3px 3px 0 #fff;
+    margin-bottom: 10px;
+  }
+  #startScreen p, #resultScreen p {
+    font-size: 17px;
+    color: #3a2e1a;
+    max-width: 320px;
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+  .bigBtn {
+    margin-top: 22px;
+    padding: 16px 38px;
+    font-size: 24px;
+    font-weight: bold;
+    color: #fff;
+    background: #5a4a2f;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 0 6px 0 #33291a;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .bigBtn:active {
+    box-shadow: 0 2px 0 #33291a;
+    transform: translateY(4px);
+  }
+  #resultScreen { display: none; }
+  #resultScore {
+    font-size: 32px;
+    color: #3a2e1a;
+    font-weight: bold;
+    margin: 10px 0;
+  }
+
+  #tapHint {
+    position: absolute;
+    bottom: 26px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #3a2e1a;
+    font-weight: bold;
+    font-size: 14px;
+    text-shadow: 1px 1px 0 rgba(255,255,255,0.6);
+    z-index: 40;
+    text-align: center;
+    pointer-events: none;
+    background: rgba(255,255,255,0.6);
+    padding: 6px 14px;
+    border-radius: 14px;
+    max-width: 85%;
+  }
+</style>
+</head>
+<body>
+<div id="game">
+
+  <div id="hud">
+    <div id="score">0</div>
+    <div id="timer">0:40</div>
+  </div>
+
+  <div id="tapHint">Swat the flies before they get away! 🪰</div>
+
+  <div id="startScreen">
+    <h1>Fly Swatter!</h1>
+    <p>Flies are buzzing all over the place, darting around erratically. Tap them fast before they escape!</p>
+    <button class="bigBtn" id="startBtn">PLAY</button>
+  </div>
+
+  <div id="resultScreen">
+    <h1>Time's Up!</h1>
+    <div id="resultScore">Score: 0</div>
+    <p id="resultMsg"></p>
+    <button class="bigBtn" id="restartBtn">PLAY AGAIN</button>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  const game = document.getElementById('game');
+  const scoreEl = document.getElementById('score');
+  const timerEl = document.getElementById('timer');
+  const tapHint = document.getElementById('tapHint');
+  const startScreen = document.getElementById('startScreen');
+  const resultScreen = document.getElementById('resultScreen');
+  const resultScore = document.getElementById('resultScore');
+  const resultMsg = document.getElementById('resultMsg');
+
+  const ROUND_SECONDS = 40;
+  const FLY_SIZE = 36;
+
+  let score = 0;
+  let running = false;
+  let timeLeft = ROUND_SECONDS;
+  let timerInterval = null;
+  let spawnTimer = null;
+  let flies = [];
+  let flyIdCounter = 0;
+  let speedLevel = 1;
+
+  const W = () => window.innerWidth;
+  const H = () => window.innerHeight;
+
+  function makeFlySVG() {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", "100%");
+    svg.setAttribute("viewBox", "0 0 40 40");
+
+    // wings (drawn behind body, animated via CSS class for a flutter)
+    const wingL = document.createElementNS(ns, "ellipse");
+    wingL.setAttribute("cx", 14); wingL.setAttribute("cy", 14);
+    wingL.setAttribute("rx", 9); wingL.setAttribute("ry", 5);
+    wingL.setAttribute("fill", "#dce8f0");
+    wingL.setAttribute("opacity", "0.7");
+    wingL.setAttribute("transform", "rotate(-20 14 14)");
+    wingL.classList.add('wing');
+    svg.appendChild(wingL);
+
+    const wingR = document.createElementNS(ns, "ellipse");
+    wingR.setAttribute("cx", 26); wingR.setAttribute("cy", 14);
+    wingR.setAttribute("rx", 9); wingR.setAttribute("ry", 5);
+    wingR.setAttribute("fill", "#dce8f0");
+    wingR.setAttribute("opacity", "0.7");
+    wingR.setAttribute("transform", "rotate(20 26 14)");
+    wingR.classList.add('wing');
+    svg.appendChild(wingR);
+
+    // body
+    const body = document.createElementNS(ns, "ellipse");
+    body.setAttribute("cx", 20); body.setAttribute("cy", 22);
+    body.setAttribute("rx", 8); body.setAttribute("ry", 11);
+    body.setAttribute("fill", "#2b2b2b");
+    svg.appendChild(body);
+
+    // body sheen
+    const sheen = document.createElementNS(ns, "ellipse");
+    sheen.setAttribute("cx", 17); sheen.setAttribute("cy", 17);
+    sheen.setAttribute("rx", 3); sheen.setAttribute("ry", 4);
+    sheen.setAttribute("fill", "#5a7a8a");
+    sheen.setAttribute("opacity", "0.6");
+    svg.appendChild(sheen);
+
+    // head
+    const head = document.createElementNS(ns, "circle");
+    head.setAttribute("cx", 20); head.setAttribute("cy", 11);
+    head.setAttribute("r", 6);
+    head.setAttribute("fill", "#1a1a1a");
+    svg.appendChild(head);
+
+    // eyes
+    const eyeL = document.createElementNS(ns, "circle");
+    eyeL.setAttribute("cx", 17); eyeL.setAttribute("cy", 10); eyeL.setAttribute("r", 2.4);
+    eyeL.setAttribute("fill", "#c0392b");
+    svg.appendChild(eyeL);
+    const eyeR = document.createElementNS(ns, "circle");
+    eyeR.setAttribute("cx", 23); eyeR.setAttribute("cy", 10); eyeR.setAttribute("r", 2.4);
+    eyeR.setAttribute("fill", "#c0392b");
+    svg.appendChild(eyeR);
+
+    // legs (simple lines)
+    const legColor = "#1a1a1a";
+    [[-4, 20, -12, 26], [-4, 24, -13, 30], [4, 20, 12, 26], [4, 24, 13, 30]].forEach(([x1, y1, x2, y2]) => {
+      const leg = document.createElementNS(ns, "line");
+      leg.setAttribute("x1", 20 + x1); leg.setAttribute("y1", y1);
+      leg.setAttribute("x2", 20 + x2); leg.setAttribute("y2", y2);
+      leg.setAttribute("stroke", legColor);
+      leg.setAttribute("stroke-width", "1.3");
+      leg.setAttribute("stroke-linecap", "round");
+      svg.appendChild(leg);
+    });
+
+    return svg;
+  }
+
+  function makeSplatSVG() {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", "100%");
+    svg.setAttribute("viewBox", "0 0 60 60");
+
+    const colors = ["#2b2b2b", "#3a3a3a"];
+    // central splat blob
+    const blob = document.createElementNS(ns, "path");
+    blob.setAttribute("d", "M 30 15 Q 42 18 44 30 Q 46 42 30 45 Q 14 42 16 30 Q 18 18 30 15 Z");
+    blob.setAttribute("fill", colors[0]);
+    blob.setAttribute("opacity", "0.85");
+    svg.appendChild(blob);
+
+    // little splatter droplets around it
+    const dropPositions = [[12, 12], [48, 14], [10, 44], [50, 46], [30, 8], [30, 52]];
+    dropPositions.forEach(([x, y]) => {
+      const drop = document.createElementNS(ns, "circle");
+      drop.setAttribute("cx", x); drop.setAttribute("cy", y);
+      drop.setAttribute("r", 2.5 + Math.random() * 2);
+      drop.setAttribute("fill", colors[1]);
+      drop.setAttribute("opacity", "0.7");
+      svg.appendChild(drop);
+    });
+
+    return svg;
+  }
+
+  // Flies move with an erratic "buzz" pattern: mostly small jittery
+  // movements with occasional sudden darts in a new random direction,
+  // rather than smooth predictable paths.
+  function spawnFly() {
+    if (!running) return;
+    if (flies.length >= 5) return;
+
+    const margin = FLY_SIZE + 10;
+    const x = margin + Math.random() * (W() - margin * 2);
+    const y = 90 + Math.random() * (H() - 160);
+
+    const el = document.createElement('div');
+    el.className = 'fly';
+    el.style.width = FLY_SIZE + 'px';
+    el.style.height = FLY_SIZE + 'px';
+    el.style.left = (x - FLY_SIZE / 2) + 'px';
+    el.style.top = (y - FLY_SIZE / 2) + 'px';
+    el.appendChild(makeFlySVG());
+    game.appendChild(el);
+
+    const id = flyIdCounter++;
+    const flyData = {
+      id, el, x, y,
+      caught: false,
+      angle: Math.random() * Math.PI * 2,
+      speed: 1.6 + Math.random() * 1.2,
+      jitterTimer: 0,
+      dartCooldown: 30 + Math.random() * 60,
+      lifeTimer: 0,
+      maxLife: 6000 + Math.random() * 4000, // flies eventually leave on their own
+    };
+    flies.push(flyData);
+
+    el.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      swatFly(flyData);
+    });
+  }
+
+  function removeFly(flyData) {
+    if (flyData.el && flyData.el.parentNode) flyData.el.parentNode.removeChild(flyData.el);
+    flies = flies.filter(f => f.id !== flyData.id);
+  }
+
+  function swatFly(flyData) {
+    if (!running || flyData.caught) return;
+    flyData.caught = true;
+
+    score += 10;
+    scoreEl.textContent = score;
+    if (score > 0 && score % 100 === 0) speedLevel += 0.12;
+    tapHint.style.display = 'none';
+
+    showSplat(flyData.x, flyData.y);
+    popEffect(flyData.x, flyData.y, '+10');
+    removeFly(flyData);
+  }
+
+  function showSplat(x, y) {
+    const size = 60;
+    const el = document.createElement('div');
+    el.className = 'splat';
+    el.style.width = size + 'px';
+    el.style.height = size + 'px';
+    el.style.left = (x - size / 2) + 'px';
+    el.style.top = (y - size / 2) + 'px';
+    el.appendChild(makeSplatSVG());
+    game.appendChild(el);
+
+    el.animate(
+      [{ opacity: 1, transform: 'scale(0.6)' }, { opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(1)' }],
+      { duration: 900, easing: 'ease-out' }
+    );
+    setTimeout(() => el.remove(), 900);
+  }
+
+  function popEffect(x, y, text) {
+    const label = document.createElement('div');
+    label.textContent = text;
+    label.style.position = 'absolute';
+    label.style.left = x + 'px';
+    label.style.top = (y - 20) + 'px';
+    label.style.color = '#3a2e1a';
+    label.style.fontWeight = 'bold';
+    label.style.fontSize = '22px';
+    label.style.zIndex = 60;
+    label.style.pointerEvents = 'none';
+    label.style.textShadow = '1px 1px 0 #fff';
+    game.appendChild(label);
+    label.animate(
+      [{ transform: 'translateY(0px)', opacity: 1 }, { transform: 'translateY(-40px)', opacity: 0 }],
+      { duration: 600, easing: 'ease-out' }
+    );
+    setTimeout(() => label.remove(), 600);
+  }
+
+  // Main fly movement loop - erratic buzzing motion
+  let lastFrameTime = performance.now();
+  function flyLoop(now) {
+    if (!running) { requestAnimationFrame(flyLoop); lastFrameTime = now; return; }
+    const dt = Math.min(40, now - lastFrameTime); // ms, clamped to avoid jumps on tab-switch
+    lastFrameTime = now;
+
+    flies.forEach(f => {
+      if (f.caught) return;
+
+      f.lifeTimer += dt;
+      if (f.lifeTimer > f.maxLife) {
+        // fly escapes off naturally after a while, no penalty
+        removeFly(f);
+        return;
+      }
+
+      f.dartCooldown -= dt / 16.6;
+      if (f.dartCooldown <= 0) {
+        // sudden dart: pick a new random direction and burst of speed
+        f.angle += (Math.random() - 0.5) * Math.PI * 1.4;
+        f.speed = 2.2 + Math.random() * 2.4;
+        f.dartCooldown = 25 + Math.random() * 70;
+      } else {
+        // small continuous jitter to the heading, and gradually settle speed
+        f.angle += (Math.random() - 0.5) * 0.35;
+        f.speed += (1.8 - f.speed) * 0.02;
+      }
+
+      const moveScale = dt / 16.6;
+      f.x += Math.cos(f.angle) * f.speed * moveScale;
+      f.y += Math.sin(f.angle) * f.speed * moveScale;
+
+      // bounce off screen edges (keep some margin so flies don't hide
+      // behind the HUD or slip fully off-screen)
+      const half = FLY_SIZE / 2;
+      if (f.x < half) { f.x = half; f.angle = Math.PI - f.angle; }
+      if (f.x > W() - half) { f.x = W() - half; f.angle = Math.PI - f.angle; }
+      if (f.y < 80) { f.y = 80; f.angle = -f.angle; }
+      if (f.y > H() - 20) { f.y = H() - 20; f.angle = -f.angle; }
+
+      f.el.style.left = (f.x - half) + 'px';
+      f.el.style.top = (f.y - half) + 'px';
+      // slight rotation to face travel direction, for visual flair
+      const rotDeg = (f.angle * 180 / Math.PI) + 90;
+      f.el.style.transform = `rotate(${rotDeg}deg)`;
+    });
+
+    requestAnimationFrame(flyLoop);
+  }
+
+  function startGame() {
+    score = 0;
+    timeLeft = ROUND_SECONDS;
+    speedLevel = 1;
+    flies.forEach(f => removeFly(f));
+    flies = [];
+    scoreEl.textContent = '0';
+    timerEl.textContent = formatTime(timeLeft);
+    timerEl.classList.remove('urgent');
+    tapHint.style.display = 'block';
+    startScreen.style.display = 'none';
+    resultScreen.style.display = 'none';
+    running = true;
+    lastFrameTime = performance.now();
+
+    scheduleSpawn();
+    timerInterval = setInterval(tickTimer, 1000);
+  }
+
+  function formatTime(s) {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  function tickTimer() {
+    timeLeft--;
+    timerEl.textContent = formatTime(Math.max(0, timeLeft));
+    if (timeLeft <= 10) timerEl.classList.add('urgent');
+    if (timeLeft <= 0) endGame();
+  }
+
+  function scheduleSpawn() {
+    if (!running) return;
+    spawnFly();
+    const delay = Math.max(500, 1200 / speedLevel);
+    spawnTimer = setTimeout(scheduleSpawn, delay);
+  }
+
+  function endGame() {
+    running = false;
+    clearTimeout(spawnTimer);
+    clearInterval(timerInterval);
+    flies.forEach(f => removeFly(f));
+
+    resultScore.textContent = 'Score: ' + score;
+    resultMsg.textContent = score >= 150 ? 'Wow, not a single fly survived!' : 'Nice swatting!';
+    resultScreen.style.display = 'flex';
+
+    try {
+      window.parent.postMessage({ type: 'GAME_OVER', score: score }, '*');
+    } catch (e) {}
+  }
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('restartBtn').addEventListener('click', startGame);
+
+  requestAnimationFrame(flyLoop);
+})();
+</script>
+</body>
+</html>
