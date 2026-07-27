@@ -61,9 +61,11 @@ values
 on conflict (slug) do nothing;
 
 -- Scores table: every submitted score, per user per game
+-- user_id references profiles (not auth.users directly) so that Supabase's
+-- automatic joins can pull each score's player display_name for leaderboards
 create table if not exists public.scores (
   id bigint generated always as identity primary key,
-  user_id uuid references auth.users on delete cascade not null,
+  user_id uuid references public.profiles (id) on delete cascade not null,
   game_slug text references public.games (slug) on delete cascade not null,
   score integer not null,
   created_at timestamptz not null default now()
