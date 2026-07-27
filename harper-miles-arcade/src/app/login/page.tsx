@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { Logo } from '@/components/Logo'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -32,18 +33,21 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-orange-200 to-orange-400 px-4">
-      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
-        <h1 className="text-3xl font-bold text-center text-orange-600 mb-1">
+    <main className="min-h-screen flex items-center justify-center bg-[#FFF6E9] px-4">
+      <div className="bg-white rounded-3xl shadow-xl p-8 w-full max-w-sm">
+        <div className="flex justify-center mb-4">
+          <Logo size={56} />
+        </div>
+        <h1 className="font-display text-3xl font-extrabold text-center text-[#26265A] mb-1">
           Welcome back
         </h1>
-        <p className="text-center text-gray-500 mb-6 text-sm">
+        <p className="text-center text-[#26265A]/60 mb-6 text-sm">
           Log in to keep playing.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-bold text-[#26265A] mb-1">
               Email
             </label>
             <input
@@ -51,12 +55,12 @@ export default function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              className="w-full rounded-xl border-2 border-[#26265A]/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FF6FA5]"
               placeholder="you@example.com"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-bold text-[#26265A] mb-1">
               Password
             </label>
             <input
@@ -64,13 +68,13 @@ export default function LoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              className="w-full rounded-xl border-2 border-[#26265A]/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FF6FA5]"
               placeholder="Your password"
             />
           </div>
 
           {error && (
-            <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">
+            <p className="text-red-600 text-sm bg-red-50 rounded-xl px-3 py-2">
               {error}
             </p>
           )}
@@ -78,15 +82,15 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold py-2.5 rounded-lg transition"
+            className="w-full bg-[#FF6FA5] hover:bg-[#ff5c98] disabled:opacity-50 text-white font-bold py-3 rounded-full shadow-[0_5px_0_#c94b7a] active:translate-y-0.5 active:shadow-[0_2px_0_#c94b7a] transition"
           >
             {loading ? 'Logging in…' : 'Log in'}
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-6">
+        <p className="text-center text-sm text-[#26265A]/60 mt-6">
           New here?{' '}
-          <Link href="/signup" className="text-orange-600 font-medium">
+          <Link href="/signup" className="text-[#FF6FA5] font-bold">
             Create an account
           </Link>
         </p>
