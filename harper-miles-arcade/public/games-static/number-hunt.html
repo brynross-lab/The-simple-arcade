@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Number Hunt!</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: linear-gradient(180deg, #dff2ff 0%, #bfe3ff 50%, #a0d2ff 100%);
+    font-family: 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', sans-serif;
+    touch-action: none;
+  }
+  #game {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #hud {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    z-index: 50;
+    pointer-events: none;
+  }
+  #nextLabel {
+    font-size: 22px;
+    font-weight: bold;
+    color: #1a3a5c;
+    text-shadow: 2px 2px 0 #fff, -1px -1px 0 #fff;
+    background: rgba(255,255,255,0.6);
+    padding: 4px 18px;
+    border-radius: 20px;
+  }
+  #timer {
+    font-size: 26px;
+    font-weight: bold;
+    color: #1a3a5c;
+    text-shadow: 2px 2px 0 #fff, -1px -1px 0 #fff;
+  }
+
+  .numberBubble {
+    position: absolute;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: #fff;
+    cursor: pointer;
+    z-index: 20;
+    box-shadow: 0 6px 0 rgba(0,0,0,0.15), 0 8px 14px rgba(0,0,0,0.15), inset 0 -6px 10px rgba(0,0,0,0.12), inset 0 6px 10px rgba(255,255,255,0.3);
+    text-shadow: 1px 1px 0 rgba(0,0,0,0.2);
+  }
+  .numberBubble.found {
+    pointer-events: none;
+  }
+
+  #startScreen, #resultScreen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, #dff2ff 0%, #a0d2ff 100%);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+  }
+  #startScreen h1, #resultScreen h1 {
+    font-size: 38px;
+    color: #1a3a5c;
+    text-shadow: 3px 3px 0 #fff;
+    margin-bottom: 10px;
+  }
+  #startScreen p, #resultScreen p {
+    font-size: 17px;
+    color: #1a3a5c;
+    max-width: 320px;
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+  .bigBtn {
+    margin-top: 22px;
+    padding: 16px 38px;
+    font-size: 24px;
+    font-weight: bold;
+    color: #fff;
+    background: #2d9cdb;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 0 6px 0 #1c6a99;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .bigBtn:active {
+    box-shadow: 0 2px 0 #1c6a99;
+    transform: translateY(4px);
+  }
+  #resultScreen { display: none; }
+  #resultTime {
+    font-size: 34px;
+    color: #1a3a5c;
+    font-weight: bold;
+    margin: 10px 0;
+  }
+
+  .wrongShake {
+    animation: shake 0.3s ease-in-out;
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+  }
+</style>
+</head>
+<body>
+<div id="game">
+
+  <div id="hud">
+    <div id="nextLabel">Find: 1</div>
+    <div id="timer">0.0s</div>
+  </div>
+
+  <div id="startScreen">
+    <h1>Number Hunt!</h1>
+    <p>Numbers 1 through 10 are scattered around the screen in all different sizes and colors. Tap them in order — 1, 2, 3... all the way to 10 — as fast as you can!</p>
+    <button class="bigBtn" id="startBtn">PLAY</button>
+  </div>
+
+  <div id="resultScreen">
+    <h1>All Done! 🎉</h1>
+    <div id="resultTime">0.0 seconds</div>
+    <p id="resultMsg"></p>
+    <button class="bigBtn" id="restartBtn">PLAY AGAIN</button>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  const game = document.getElementById('game');
+  const nextLabel = document.getElementById('nextLabel');
+  const timerEl = document.getElementById('timer');
+  const startScreen = document.getElementById('startScreen');
+  const resultScreen = document.getElementById('resultScreen');
+  const resultTime = document.getElementById('resultTime');
+  const resultMsg = document.getElementById('resultMsg');
+
+  const COLORS = [
+    ['#ff6b6b', '#c0392b'], // red
+    ['#ffa94d', '#d9730d'], // orange
+    ['#ffd43b', '#e0ac00'], // yellow
+    ['#69db7c', '#2e9e44'], // green
+    ['#4dd4d4', '#1a9999'], // teal
+    ['#4dabf7', '#1c6ea4'], // blue
+    ['#9775fa', '#6a3fc7'], // purple
+    ['#f783ac', '#c94b7a'], // pink
+    ['#ff8787', '#d94c4c'], // coral
+    ['#63e6be', '#1aa87a'], // mint
+  ];
+
+  let running = false;
+  let nextNumber = 1;
+  let startTime = 0;
+  let timerInterval = null;
+  let bubbles = []; // {el, num, x, y, size}
+
+  const W = () => window.innerWidth;
+  const H = () => window.innerHeight;
+
+  function formatTime(ms) {
+    return (ms / 1000).toFixed(1) + 's';
+  }
+
+  // Place all 10 number bubbles at random non-overlapping positions, with
+  // randomized size and color per number (unrelated to numeric value, so
+  // kids can't just look for "getting bigger" as a shortcut).
+  function layoutBubbles() {
+    bubbles.forEach(b => { if (b.el.parentNode) b.el.parentNode.removeChild(b.el); });
+    bubbles = [];
+
+    const placed = []; // {x, y, size}
+    const topMargin = 90;
+    const bottomMargin = 30;
+
+    for (let n = 1; n <= 10; n++) {
+      const size = 56 + Math.random() * 46; // 56 - 102 px
+      let x, y, attempts = 0;
+      let ok = false;
+
+      while (attempts < 60 && !ok) {
+        x = size / 2 + Math.random() * (W() - size);
+        y = topMargin + size / 2 + Math.random() * (H() - topMargin - bottomMargin - size);
+        ok = true;
+        for (const p of placed) {
+          const dx = x - p.x, dy = y - p.y;
+          const minDist = (size + p.size) / 2 + 8; // small gap between bubbles
+          if (Math.sqrt(dx * dx + dy * dy) < minDist) { ok = false; break; }
+        }
+        attempts++;
+      }
+      // if we couldn't find a non-overlapping spot after many tries, just
+      // place it anyway (rare, only happens if screen is very small/crowded)
+      placed.push({ x, y, size });
+
+      const [bg, shadow] = COLORS[(n - 1) % COLORS.length];
+      const el = document.createElement('div');
+      el.className = 'numberBubble';
+      el.style.width = size + 'px';
+      el.style.height = size + 'px';
+      el.style.left = (x - size / 2) + 'px';
+      el.style.top = (y - size / 2) + 'px';
+      el.style.background = `radial-gradient(circle at 35% 30%, ${bg}, ${shadow})`;
+      el.style.fontSize = (size * 0.42) + 'px';
+      el.textContent = n;
+      el.style.transform = 'scale(0)';
+      game.appendChild(el);
+
+      // little "plop" pop-in animation, staggered per bubble
+      el.animate(
+        [{ transform: 'scale(0)' }, { transform: 'scale(1.15)' }, { transform: 'scale(1)' }],
+        { duration: 380, delay: n * 60, easing: 'ease-out', fill: 'forwards' }
+      );
+
+      const bubbleData = { el, num: n, x, y, size, found: false };
+      bubbles.push(bubbleData);
+
+      el.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        handleTap(bubbleData);
+      });
+    }
+  }
+
+  function handleTap(bubbleData) {
+    if (!running || bubbleData.found) return;
+
+    if (bubbleData.num === nextNumber) {
+      bubbleData.found = true;
+      bubbleData.el.classList.add('found');
+      popAway(bubbleData.el);
+      nextNumber++;
+
+      if (nextNumber > 10) {
+        finishGame();
+      } else {
+        nextLabel.textContent = 'Find: ' + nextNumber;
+      }
+    } else {
+      // wrong number tapped - gentle shake, no penalty, just visual feedback
+      bubbleData.el.classList.remove('wrongShake');
+      void bubbleData.el.offsetWidth; // restart animation
+      bubbleData.el.classList.add('wrongShake');
+    }
+  }
+
+  function popAway(el) {
+    el.animate(
+      [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.4)', opacity: 0 }],
+      { duration: 300, easing: 'ease-out', fill: 'forwards' }
+    );
+    setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+  }
+
+  function tickTimer() {
+    if (!running) return;
+    const elapsed = performance.now() - startTime;
+    timerEl.textContent = formatTime(elapsed);
+  }
+
+  function startGame() {
+    nextNumber = 1;
+    nextLabel.textContent = 'Find: 1';
+    timerEl.textContent = '0.0s';
+    startScreen.style.display = 'none';
+    resultScreen.style.display = 'none';
+    layoutBubbles();
+    running = true;
+    startTime = performance.now();
+
+    timerInterval = setInterval(tickTimer, 50);
+  }
+
+  function finishGame() {
+    running = false;
+    clearInterval(timerInterval);
+    const totalMs = performance.now() - startTime;
+    const totalSeconds = totalMs / 1000;
+
+    resultTime.textContent = formatTime(totalMs);
+    if (totalSeconds < 8) {
+      resultMsg.textContent = 'Wow, super speedy counting!';
+    } else if (totalSeconds < 15) {
+      resultMsg.textContent = 'Great job finding them all!';
+    } else {
+      resultMsg.textContent = 'Nice work counting all the way to 10!';
+    }
+    resultScreen.style.display = 'flex';
+
+    // score reported as a number for leaderboard purposes: lower time is
+    // better, but higher score is better on a typical leaderboard, so we
+    // report a derived score where faster completion = higher number
+    const score = Math.max(10, Math.round(2000 / Math.max(1, totalSeconds)));
+    try {
+      window.parent.postMessage({ type: 'GAME_OVER', score: score }, '*');
+    } catch (e) {}
+  }
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('restartBtn').addEventListener('click', startGame);
+
+  window.addEventListener('resize', () => { if (!running) { /* no-op, re-layout happens on next start */ } });
+})();
+</script>
+</body>
+</html>

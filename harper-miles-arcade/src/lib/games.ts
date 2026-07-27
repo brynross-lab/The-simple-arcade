@@ -49,6 +49,13 @@ export const GAMES: GameDef[] = [
     emoji: '🐛',
     color: 'from-green-400 to-emerald-600',
   },
+  {
+    slug: 'number-hunt',
+    title: 'Number Hunt!',
+    description: 'Tap the numbers 1 through 10 in order as fast as you can.',
+    emoji: '🔢',
+    color: 'from-sky-400 to-blue-600',
+  },
 ]
 
 export function getGame(slug: string): GameDef | undefined {
