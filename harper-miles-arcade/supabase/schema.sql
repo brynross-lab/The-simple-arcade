@@ -56,7 +56,8 @@ values
   ('hungry-hippo', 'Hungry Hippo!'),
   ('tap-attack', 'Tap Attack!'),
   ('fly-swatter', 'Fly Swatter!'),
-  ('hungry-caterpillar', 'Hungry Caterpillar!')
+  ('hungry-caterpillar', 'Hungry Caterpillar!'),
+  ('number-hunt', 'Number Hunt!')
 on conflict (slug) do nothing;
 
 -- Scores table: every submitted score, per user per game
